@@ -1,139 +1,105 @@
 import cv2
-from matplotlib import pyplot as plt
-import numpy as np
-import sys
-import math
-import copy
-import glob
 import os
+import sys
+import glob
+import copy
+import math
+import numpy as np
 
-# chessboard size
+# checkerboard grid information
 nb_horizontal = 9
 nb_vertical = 6
-# world coordinates, x->y->z
-# set x and y coordinates
-objp = np.zeros((nb_horizontal*nb_vertical,3), np.float32)
-# set z coordinates
+# unit is meter
+size_per_grid = 0.0336
+# prepare an array to store 3D points like (1,1,0) (2,3,0) (5,5,0)
+objp = np.zeros((nb_vertical*nb_horizontal,3),np.float32)
 objp[:,:2] = np.mgrid[0:nb_vertical,0:nb_horizontal].T.reshape(-1,2)
-
-# firstly read images to calibrate
-left = sorted(glob.glob("left_chess/left*.png"))
-right = sorted(glob.glob("right_chess/right*.png"))
+objp = objp * size_per_grid
+# assign folder path
+left = sorted(glob.glob('../left_chess/*.png'))
+right = sorted(glob.glob('../right_chess/*.png'))
+# prepare list to store points and images
 imgPoints_l = []
 imgPoints_r = []
 img_left = []
 img_right = []
-objpoints = []
+objPoints = []
+
 for i in range(len(left)):
-    iml = cv2.imread(left[i])
-    imr = cv2.imread(right[i])
-    retl, corners_l = cv2.findChessboardCorners(iml,(nb_vertical,nb_horizontal))
-    retr, corners_r = cv2.findChessboardCorners(imr,(nb_vertical,nb_horizontal))
-    imgl = copy.deepcopy(iml)
-    imgr = copy.deepcopy(imr)
-    cv2.drawChessboardCorners(imgl, (nb_vertical,nb_horizontal), corners_l, retl)
-    cv2.drawChessboardCorners(imgr, (nb_vertical,nb_horizontal), corners_r, retr)
-    # when and only when both of the left and right images in a pair has the corners
-    if retl and retr: 
+    # read img and find corners
+    imgl = cv2.imread(left[i])
+    imgr = cv2.imread(right[i])
+    retl, corners_l = cv2.findChessboardCorners(imgl,(nb_vertical,nb_horizontal))
+    retr, corners_r = cv2.findChessboardCorners(imgl,(nb_vertical,nb_horizontal))
+    iml = copy.deepcopy(imgl)
+    imr = copy.deepcopy(imgr)
+    if retl and retr:
         imgPoints_l.append(corners_l)
         imgPoints_r.append(corners_r)
         img_left.append(iml)
         img_right.append(imr)
-        objpoints.append(objp)
-    #cv2.imshow('left', imgl)
-    #cv2.waitKey(5)
-    #cv2.imshow('right', imgr)
-    #cv2.waitKey(10)
-#cv2.destroyAllWindows()
+        objPoints.append(objp)
 
-# determine the camera matirx 1
-_, mtx1, dist1,_ ,_ = cv2.calibrateCamera(objpoints, imgPoints_l, (imgl.shape[:2])[::-1], None, None)
-# determine the camera matirx 2
-_, mtx2, dist2,_ ,_ = cv2.calibrateCamera(objpoints, imgPoints_r, (imgr.shape[:2])[::-1], None, None)
+# calibrate single camera
+_, mtx1, dist1, _, _ = cv2.calibrateCamera(objPoints,imgPoints_l,(iml.shape[:2])[::-1],None,None)
+_, mtx2, dist2, _, _ = cv2.calibrateCamera(objPoints,imgPoints_r,(imr.shape[:2])[::-1],None,None) 
 
-# undistortion
-def undistort(img, mtx, dist, root):
+# define the undistort function
+def undistort(images,mtx,dist,root):
     counter = 0
     if not os.path.exists(root):
         os.makedirs(root)
-    for im in img:
+    for im in images:
         im = cv2.imread(im)
-        dst = cv2.undistort(im, mtx, dist)
-        cv2.imwrite(root+'/'+str(counter)+'.png', dst)
-        counter = counter+1
-'''
-def undistort_liu(img, mtx, dist, root):
-    counter = 0
-    if not os.path.exists(root):
-        os.makedirs(root)
-    for im in img:
-        im = cv2.imread(im)
-        h,w = im.shape[:2]
-        newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx,dist,(w,h),1,(w,h))
-        dst = cv2.undistort(im,mtx,dist,None,newcameramtx)
-        x,y,w,h = roi
-        dst = dst[y:y+h, x:x+w]
-        cv2.imwrite(root+'/'+str(counter)+'.png', dst)
-        counter = counter+1
-'''
+        dst = cv2.undistort(im,mtx,dist)
+        cv2.imwrite(root+str(counter)+'.png',dst)
+        counter += 1
 
-left = sorted(glob.glob("raw_img/withOcc/left/*.png"))
-right = sorted(glob.glob("raw_img/withOcc/right/*.png"))
-root = 'UndistortedImgOcc/'
-undistort(left, mtx1, dist1, root+'left')
-undistort(right, mtx2, dist2, root+'right') 
-'''
-left = sorted(glob.glob("left/*.png"))
-right = sorted(glob.glob("right/*.png"))
-root = 'UndistortedImg/'
-undistort_liu(left, mtx1, dist1, root+'left')
-undistort_liu(right, mtx2, dist2, root+'right') 
-'''
-# undistort chessboard
+# get undistorted chessboard images
+root = 'Undistorted/chessboard/'
+undistort(left,mtx1,dist1,root+'left/')
+undistort(right,mtx2,dist2,root+'right/')
+# get undistorted dataset without occlusion
+root2 = 'Undistorted/withoutOcc/'
+left_without = sorted(glob.glob('../left/*.png'))
+right_without = sorted(glob.glob('../right/*.png'))
+undistort(left_without,mtx1,dist1,root2+'left/')
+undistort(right_without,mtx2,dist2,root2+'right/')
+# get undistorted dataset with occlusion
+root3 = 'Undistorted/withOcc/'
+left_with = sorted(glob.glob('../raw_img/withOcc/left/*.png'))
+right_with = sorted(glob.glob('../raw_img/withOcc/right/*.png'))
+undistort(left_with,mtx1,dist1,root3+'left/')
+undistort(right_with,mtx2,dist2,root3+'right/')
 
-left2 = sorted(glob.glob("left_chess/left*.png"))
-right2 = sorted(glob.glob("right_chess/right*.png"))
-root2 = 'UndistortedChessBoard/'
-undistort(left2, mtx1, dist1, root2+'left')
-undistort(right2, mtx2, dist2, root2+'right') 
-
-## calibrate via the undistorted chessboard
-left_undistort = sorted(glob.glob("UndistortedChessBoard/left/*.png"))
-right_undistort = sorted(glob.glob("UndistortedChessBoard/right/*.png"))
-imgPoints_left = []
-imgPoints_right = []
-objpoints_undistort = []
-for i in range(len(left_undistort)):
-    iml = cv2.imread(left_undistort[i])
-    imr = cv2.imread(right_undistort[i])
+# calibrate single camera using undistored dataset
+left_undistorted = sorted(glob.glob(root+'left/*.png'))
+right_undistorted = sorted(glob.glob(root+'right/*.png'))
+imgPoints_l_undistored = []
+imgPoints_r_undistored = []
+objpoints_undistorted = []
+img_left_undistorted = []
+img_right_undistorted = []
+for i in range(len(left_undistorted)):
+    iml = cv2.imread(left_undistorted[i])
+    imr = cv2.imread(right_undistorted[i])
     retl, corners_l = cv2.findChessboardCorners(iml,(nb_vertical,nb_horizontal))
     retr, corners_r = cv2.findChessboardCorners(imr,(nb_vertical,nb_horizontal))
     imgl = copy.deepcopy(iml)
     imgr = copy.deepcopy(imr)
-    cv2.drawChessboardCorners(imgl, (nb_vertical,nb_horizontal), corners_l, retl)
-    cv2.drawChessboardCorners(imgr, (nb_vertical,nb_horizontal), corners_r, retr)
-    # when and only when both of the left and right images in a pair has the corners
     if retl and retr: 
-        imgPoints_left.append(corners_l)
-        imgPoints_right.append(corners_r)
-        objpoints_undistort.append(objp)
-    #cv2.imshow('left', imgl)
-    #cv2.waitKey(5)
-    #cv2.imshow('right', imgr)
-    #cv2.waitKey(10)
-#cv2.destroyAllWindows()
-
+        imgPoints_l_undistored.append(corners_l)
+        imgPoints_r_undistored.append(corners_r)
+        img_left_undistorted.append(iml)
+        img_right_undistorted.append(imr)
+        objpoints_undistorted.append(objp)
 # determine the camera matirx 1
-_, mtx1, dist1,_ ,_ = cv2.calibrateCamera(objpoints_undistort, imgPoints_left, (imgl.shape[:2])[::-1], None, None)
+_, mtx1, dist1,_ ,_ = cv2.calibrateCamera(objpoints_undistorted, imgPoints_l_undistored, (imgl.shape[:2])[::-1], None, None)
 # determine the camera matirx 2
-_, mtx2, dist2,_ ,_ = cv2.calibrateCamera(objpoints_undistort, imgPoints_right, (imgr.shape[:2])[::-1], None, None)
-
-
-# stereo calibration
-_, mtx1, dist1, mtx2, dist2, R, T,_ ,_ = cv2.stereoCalibrate(objpoints_undistort, imgPoints_left, imgPoints_right, mtx1, dist1, mtx2, dist2, (imgl.shape[:2])[::-1], flags=cv2.CALIB_FIX_INTRINSIC)
-
-
-# camera information
-cameraInfo = {'mtx1':mtx1, 'dist1':dist1, 'mtx2':mtx2, 'dist2':dist2, 'R':R, 'T':T}
-with open('cameraInfo_Occ.txt','w') as f:
+_, mtx2, dist2,_ ,_ = cv2.calibrateCamera(objpoints_undistorted, imgPoints_r_undistored, (imgr.shape[:2])[::-1], None, None)
+# stereo calibrate
+_, mtx1, dist1, mtx2, dist2, R, T,_ ,_ = cv2.stereoCalibrate(objpoints_undistorted, imgPoints_l_undistored, imgPoints_r_undistored, mtx1, dist1, mtx2, dist2, (imgl.shape[:2])[::-1], flags=cv2.CALIB_FIX_INTRINSIC)
+# record camera info
+cameraInfo = {'mtx1':mtx1, 'dist1':dist1, 'mtx2':mtx2, 'dist2':dist2,'R':R, 'T':T}
+with open('cameraInfo.txt','w') as f:
     f.write(str(cameraInfo))
